@@ -1,6 +1,7 @@
 package com.aseel.mini_wsa.service;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -95,7 +96,7 @@ public class EventIngestionService {
                 }
                 long previousCount = securityEventRepository.countByClientIpAndTimestampBetween(event.getClientIp(), event.getTimestamp().minusSeconds(600), event.getTimestamp());
                 SecurityEventEntity entity = securityEventMapper.toEntity(event);
-                entity.setReceivedAt(Instant.now());
+                entity.setReceivedAt(Instant.now().truncatedTo(ChronoUnit.MICROS));
                 entity.setAttackType(eventEnrichmentService.classify(event.getRule().getCategory()));
                 entity.setThreatScore(eventEnrichmentService.calculateThreatScore(event, previousCount));
                 SecurityEventEntity savedEntity = securityEventRepository.saveAndFlush(entity);
