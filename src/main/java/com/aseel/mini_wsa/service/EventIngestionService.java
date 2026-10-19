@@ -1,5 +1,6 @@
 package com.aseel.mini_wsa.service;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -9,7 +10,12 @@ import org.springframework.stereotype.Service;
 import com.aseel.mini_wsa.dto.EventIngestionResult;
 import com.aseel.mini_wsa.dto.IngestionResponse;
 import com.aseel.mini_wsa.dto.ValidationError;
+import com.aseel.mini_wsa.entity.SecurityEventEntity;
+import com.aseel.mini_wsa.exception.InvalidIngestionRequestException;
+import com.aseel.mini_wsa.mapper.SecurityEventMapper;
 import com.aseel.mini_wsa.model.SecurityEvent;
+import com.aseel.mini_wsa.repository.SecurityEventRepository;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -18,10 +24,20 @@ public class EventIngestionService {
 
     private final ObjectMapper objectMapper;
     private final EventValidationService eventValidationService;
+    private final SecurityEventRepository securityEventRepository;
+    private final EventEnrichmentService eventEnrichmentService;
+    private final SecurityEventMapper securityEventMapper;
 
-    public EventIngestionService(ObjectMapper objectMapper, EventValidationService eventValidationService) {
+   
+
+    public EventIngestionService(ObjectMapper objectMapper, EventValidationService eventValidationService,
+            SecurityEventRepository securityEventRepository, EventEnrichmentService eventEnrichmentService,
+            SecurityEventMapper securityEventMapper) {
         this.objectMapper = objectMapper;
         this.eventValidationService = eventValidationService;
+        this.securityEventRepository = securityEventRepository;
+        this.eventEnrichmentService = eventEnrichmentService;
+        this.securityEventMapper = securityEventMapper;
     }
 
     public IngestionResponse ingest(JsonNode input) {
@@ -47,7 +63,7 @@ public class EventIngestionService {
     private List<JsonNode> normalizeInput(JsonNode input){
         List<JsonNode> events = new ArrayList<>();
         if (input == null || input.isNull()) {
-            throw new IllegalArgumentException("Input is null.");
+            throw new InvalidIngestionRequestException("Input is null.");
         } else if (input.isArray() && input.size() > 0) {
             for (JsonNode eventNode : input) {
                 events.add(eventNode);
@@ -55,7 +71,7 @@ public class EventIngestionService {
         } else if (input.isObject()) {
             events.add(input);
         } else {
-            throw new IllegalArgumentException("Expected a JSON object or a non-empty array.");
+            throw new InvalidIngestionRequestException("Expected a JSON object or a non-empty array.");
         }
         return events;
     }
@@ -71,7 +87,21 @@ public class EventIngestionService {
             List<ValidationError> errors = eventValidationService.validateEvent(event);
             if (errors.isEmpty()) {
                 // Event is valid, process it (e.g., save to database)
-                return new EventIngestionResult(index,event.getEventId(), 201, List.of());
+                SecurityEventEntity existingEvent = securityEventRepository.findById(event.getEventId()).orElse(null);
+                if (existingEvent != null) {
+                    EventIngestionResult result = new EventIngestionResult(index, existingEvent.getEventId(), 200, List.of());
+                    result.setEvent(securityEventMapper.toResponse(existingEvent));
+                    return result;
+                }
+                long previousCount = securityEventRepository.countByClientIpAndTimestampBetween(event.getClientIp(), event.getTimestamp().minusSeconds(600), event.getTimestamp());
+                SecurityEventEntity entity = securityEventMapper.toEntity(event);
+                entity.setReceivedAt(Instant.now());
+                entity.setAttackType(eventEnrichmentService.classify(event.getRule().getCategory()));
+                entity.setThreatScore(eventEnrichmentService.calculateThreatScore(event, previousCount));
+                SecurityEventEntity savedEntity = securityEventRepository.saveAndFlush(entity);
+                EventIngestionResult result = new EventIngestionResult(index, savedEntity.getEventId(), 201, List.of());
+                result.setEvent(securityEventMapper.toResponse(savedEntity));
+                return result;
             } else {
                 // Event is invalid, add to rejected count and results
                 return new EventIngestionResult(index,event.getEventId(), 400, errors);

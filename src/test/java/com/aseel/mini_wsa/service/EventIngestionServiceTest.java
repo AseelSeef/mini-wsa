@@ -2,10 +2,16 @@ package com.aseel.mini_wsa.service;
 
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import com.aseel.mini_wsa.dto.IngestionResponse;
+import com.aseel.mini_wsa.entity.SecurityEventEntity;
+import com.aseel.mini_wsa.mapper.SecurityEventMapper;
+import com.aseel.mini_wsa.repository.SecurityEventRepository;
 
 import jakarta.validation.Validator;
 
@@ -55,8 +61,11 @@ public class EventIngestionServiceTest {
         JsonNode inputs = objectMapper.createArrayNode().add(event1).add(event2);
 
         Validator validator = jakarta.validation.Validation.buildDefaultValidatorFactory().getValidator();
-      
-        EventIngestionService eventIngestionService = new EventIngestionService(objectMapper, new EventValidationService(validator));
+        
+        SecurityEventRepository repository =Mockito.mock(SecurityEventRepository.class);
+        when(repository.saveAndFlush(any(SecurityEventEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        EventIngestionService eventIngestionService = new EventIngestionService(objectMapper, new EventValidationService(validator),repository,new EventEnrichmentService(),new SecurityEventMapper());
         IngestionResponse response = eventIngestionService.ingest(inputs);
         assertEquals(1, response.getRejected());
         assertEquals(1, response.getCreated());

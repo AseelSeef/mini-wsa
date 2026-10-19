@@ -8,12 +8,21 @@ public class EventIngestionResult {
     private String eventId;
     private int status;
     private List<ValidationError> validationErrors;
+    private EnrichedSecurityEvent event;
 
     public EventIngestionResult(int index, String eventId, int status, List<ValidationError> validationErrors) {
         this.index = index;
         this.eventId = eventId;
         this.status = status;
         this.validationErrors = validationErrors;
+    }
+
+    public EnrichedSecurityEvent getEvent() {
+        return event;
+    }
+
+    public void setEvent(EnrichedSecurityEvent event) {
+        this.event = event;
     }
 
     public int getIndex() {
