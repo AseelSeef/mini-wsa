@@ -19,4 +19,12 @@ public class ApiExceptionHandler {
     public ResponseEntity<ValidationError> handleUnreadableBody(HttpMessageNotReadableException exception) {
         return ResponseEntity.badRequest().body(new ValidationError("Malformed JSON or missing request body.", "input"));
     }
+
+    @ExceptionHandler(InvalidQueryException.class)
+    public ResponseEntity<ValidationError> handleInvalidQuery(
+            InvalidQueryException exception) {
+        return ResponseEntity.badRequest().body(
+            new ValidationError(exception.getMessage(), "query")
+        );
+    }
 }
