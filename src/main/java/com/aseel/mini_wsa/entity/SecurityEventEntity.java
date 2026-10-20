@@ -11,10 +11,15 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "security_events")
+@Table(name = "security_events", indexes = {
+        @Index(name = "idx_events_ip_time", columnList = "client_ip,event_timestamp"),
+        @Index(name = "idx_events_config_time", columnList = "config_id,event_timestamp"),
+        @Index(name = "idx_events_time", columnList = "event_timestamp")
+})
 public class SecurityEventEntity {
 
     @Id
