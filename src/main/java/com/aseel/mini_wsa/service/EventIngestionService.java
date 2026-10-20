@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import com.aseel.mini_wsa.dto.EventIngestionResult;
 import com.aseel.mini_wsa.dto.IngestionResponse;
@@ -15,6 +16,7 @@ import com.aseel.mini_wsa.entity.SecurityEventEntity;
 import com.aseel.mini_wsa.exception.InvalidIngestionRequestException;
 import com.aseel.mini_wsa.mapper.SecurityEventMapper;
 import com.aseel.mini_wsa.model.SecurityEvent;
+import com.aseel.mini_wsa.repository.EventInsertRepository;
 import com.aseel.mini_wsa.repository.SecurityEventRepository;
 
 import tools.jackson.databind.JsonNode;
@@ -28,17 +30,19 @@ public class EventIngestionService {
     private final SecurityEventRepository securityEventRepository;
     private final EventEnrichmentService eventEnrichmentService;
     private final SecurityEventMapper securityEventMapper;
+    private final EventInsertRepository eventInsertRepository;
 
    
 
     public EventIngestionService(ObjectMapper objectMapper, EventValidationService eventValidationService,
             SecurityEventRepository securityEventRepository, EventEnrichmentService eventEnrichmentService,
-            SecurityEventMapper securityEventMapper) {
+            SecurityEventMapper securityEventMapper, EventInsertRepository eventInsertRepository) {
         this.objectMapper = objectMapper;
         this.eventValidationService = eventValidationService;
         this.securityEventRepository = securityEventRepository;
         this.eventEnrichmentService = eventEnrichmentService;
         this.securityEventMapper = securityEventMapper;
+        this.eventInsertRepository = eventInsertRepository;
     }
 
     public IngestionResponse ingest(JsonNode input) {
@@ -94,15 +98,7 @@ public class EventIngestionService {
                     result.setEvent(securityEventMapper.toResponse(existingEvent));
                     return result;
                 }
-                long previousCount = securityEventRepository.countByClientIpAndTimestampBetween(event.getClientIp(), event.getTimestamp().minusSeconds(600), event.getTimestamp());
-                SecurityEventEntity entity = securityEventMapper.toEntity(event);
-                entity.setReceivedAt(Instant.now().truncatedTo(ChronoUnit.MICROS));
-                entity.setAttackType(eventEnrichmentService.classify(event.getRule().getCategory()));
-                entity.setThreatScore(eventEnrichmentService.calculateThreatScore(event, previousCount));
-                SecurityEventEntity savedEntity = securityEventRepository.saveAndFlush(entity);
-                EventIngestionResult result = new EventIngestionResult(index, savedEntity.getEventId(), 201, List.of());
-                result.setEvent(securityEventMapper.toResponse(savedEntity));
-                return result;
+                return saveNewEvent(index, event);
             } else {
                 // Event is invalid, add to rejected count and results
                 return new EventIngestionResult(index,event.getEventId(), 400, errors);
@@ -131,5 +127,31 @@ public class EventIngestionService {
             return new EventIngestionResult(index,eventId ,400,List.of(new ValidationError("Invalid event field type, enum value, or timestamp.", "event")));
         }
 
+    }
+
+    private EventIngestionResult saveNewEvent(int index, SecurityEvent event) {
+        long previousCount = securityEventRepository.countByClientIpAndTimestampBetween(event.getClientIp(), event.getTimestamp().minusSeconds(600), event.getTimestamp());
+        SecurityEventEntity entity = securityEventMapper.toEntity(event);
+        entity.setReceivedAt(Instant.now().truncatedTo(ChronoUnit.MICROS));
+        entity.setAttackType(eventEnrichmentService.classify(event.getRule().getCategory()));
+        entity.setThreatScore(eventEnrichmentService.calculateThreatScore(event, previousCount));
+        try {
+            eventInsertRepository.insert(entity);
+        } catch (DataIntegrityViolationException exception) {
+            SecurityEventEntity stored =securityEventRepository.findById(event.getEventId()).orElse(null);
+
+            if (stored == null) {
+                throw exception;
+            }
+
+            EventIngestionResult result = new EventIngestionResult(
+                index, stored.getEventId(), 200, List.of()
+            );
+        result.setEvent(securityEventMapper.toResponse(stored));
+        return result;
+    }
+        EventIngestionResult result = new EventIngestionResult(index, entity.getEventId(), 201, List.of());
+        result.setEvent(securityEventMapper.toResponse(entity));
+        return result;
     }
 }
