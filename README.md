@@ -342,20 +342,18 @@ Manual verification also exercised summary filters, empty/reversed ranges, sampl
 
 ## Challenges and lessons learned
 
-- Partial batches require per-item JSON conversion: directly binding an entire array of typed events could reject the request before individual results are produced. Conversion errors and Bean Validation errors are returned using the same error DTO.
-- A lookup followed by `save` is insufficient for concurrent first-write-wins semantics. Insert-only persistence and a database uniqueness constraint provide the final protection.
-- The HTTP integration test exposed timestamp precision differences: Java `Instant` may contain nanoseconds, while PostgreSQL stores microseconds. Server-generated `receivedAt` is truncated to microseconds before insertion so initial and duplicate responses agree.
+- Supporting partial batch success required converting and validating each event separately. This allows valid events to be stored even when another event contains an invalid enum or a missing required field.
+- Checking whether an event exists before saving does not prevent concurrent requests from using the same ID. Insert-only persistence and the database primary key prevent overwriting an existing event.
+- An integration test revealed a timestamp precision difference between Java and PostgreSQL. Truncating server-generated receivedAt to microseconds keeps the initial and duplicate responses consistent.
 
 ## Limitations and next improvements
 
-- Repeat-offender count and insert are not serialized per IP. Concurrent distinct events can observe the same prior count near the threshold. Address with a per-IP database coordination strategy or partitioned processing if strict concurrent scoring is required.
-- Incoming event timestamps with sub-microsecond precision are not yet normalized consistently with database precision. `receivedAt` is normalized.
-- Ingestion is synchronous, with a transaction per new event. There is no enforced server-side batch-size limit; the demo uses batches of 100.
-- Infrastructure failures can interrupt a batch after some earlier items have committed. Clients can safely retry stored IDs.
-- Offset pagination can shift under concurrent inserts. Cursor pagination would improve stability and large-offset behavior.
-- Summary aggregates use separate queries, so concurrent writes can cause small cross-query inconsistencies. A repeatable-read snapshot is a possible improvement.
-- The generator and demo load the generated file/data into memory; streaming generation and ingestion would suit larger volumes.
-- Test data is isolated from the application database, but integration-test records currently remain between runs with unique IDs. Add targeted cleanup or disposable databases.
-- Replace automatic schema updates with versioned migrations, externalize environment-specific configuration, and add request metrics and operational monitoring.
-- Add automated query tests with controlled datasets, query-plan/performance measurements, retention/time partitioning, and pre-aggregation as justified by scale.
-- The Time Series bonus is implemented. Alerting, rate limiting, and a full app-plus-database Compose deployment are not implemented.
+- Concurrent events from the same IP may receive a score based on the same previous event count. Strict scoring under concurrency would require additional coordination.
+- Incoming timestamps with nanosecond precision may be rounded when stored. I would make timestamp precision consistent throughout the ingestion flow.
+- The API does not currently limit batch size. I would add a configurable maximum to control memory usage and request processing time.
+- If a database failure interrupts a batch, earlier events may already be stored. Clients can retry the batch; stored event IDs are returned without being inserted again.
+- Offset pagination may shift when new events arrive between requests.
+- The generator and demo load events into memory. For larger datasets, I would generate and send smaller batches incrementally.
+- I would expand automated coverage for Summary and Samples using known datasets and expected results.
+- The project uses automatic schema updates and local development credentials for simplicity. These settings would need to be adapted for deployment.
+- The Time Series bonus is implemented. Other optional bonuses and an application container are outside the submitted scope.
