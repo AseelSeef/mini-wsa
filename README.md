@@ -1,4 +1,4 @@
-# Mini WSA â€” Security Analytics Pipeline
+# Mini WSA - Security Analytics Pipeline
 
 A Java / Spring Boot backend for ingesting security events, classifying attacks, calculating threat scores, storing enriched events, and querying analytics.
 
