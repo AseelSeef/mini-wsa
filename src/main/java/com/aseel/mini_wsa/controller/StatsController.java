@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.aseel.mini_wsa.dto.SummaryResponse;
+import com.aseel.mini_wsa.dto.TimeSeriesResponse;
 import com.aseel.mini_wsa.service.EventStatisticsService;
 
 @RestController
@@ -27,6 +28,16 @@ public class StatsController {
             @RequestParam(name = "to") Instant to) {
 
         return eventStatisticsService.summary(configId, from, to);
+    }
+
+    @GetMapping("/timeseries")
+    public TimeSeriesResponse timeseries(
+            @RequestParam(name = "configId", required = false) Integer configId,
+            @RequestParam(name = "from") Instant from,
+            @RequestParam(name = "to") Instant to,
+            @RequestParam(name = "interval") String interval) {
+
+        return eventStatisticsService.timeseries(configId, from, to, interval);
     }
 
 }

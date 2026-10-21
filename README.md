@@ -153,6 +153,7 @@ The script:
 1. Sends events in batches of 100 and prints created/existing/rejected totals.
 2. Queries Summary over the file's timestamp range.
 3. Retrieves three Samples in that range.
+4. Queries Time Series using five-minute buckets over the same range.
 
 Optional parameters:
 
@@ -273,6 +274,49 @@ Invoke-RestMethod "http://localhost:8080/v1/events/samples?category=BOT&action=D
 
 Returns `events`, `total`, `limit`, and `offset`. An offset beyond the total returns an empty list with the actual total. Invalid filters/pagination return 400.
 
+### Time Series — Bonus Feature
+
+`GET /v1/stats/timeseries`
+
+Returns event counts grouped into fixed time buckets, suitable for a dashboard chart.
+
+| Parameter | Required | Description |
+| --- | --- | --- |
+| configId | No | Omit to include all configurations |
+| from | Yes | ISO8601 timestamp, inclusive |
+| to | Yes | ISO8601 timestamp, exclusive |
+| interval | Yes | `1m`, `5m`, or `1h` |
+
+```powershell
+Invoke-RestMethod "http://localhost:8080/v1/stats/timeseries?from=2026-10-20T10:00:00Z&to=2026-10-20T13:00:00Z&interval=5m" |
+    ConvertTo-Json -Depth 10
+```
+
+Example response:
+
+```json
+{
+  "configId": null,
+  "timeRange": {
+    "from": "2026-10-20T10:00:00Z",
+    "to": "2026-10-20T10:10:00Z"
+  },
+  "interval": "5m",
+  "buckets": [
+    { "timestamp": "2026-10-20T10:00:00Z", "count": 300 },
+    { "timestamp": "2026-10-20T10:05:00Z", "count": 300 }
+  ]
+}
+```
+
+Aggregation runs in PostgreSQL using `date_bin`. Buckets are aligned to UTC clock boundaries and sorted chronologically. Only non-empty buckets are returned.
+
+Filtering occurs before aggregation. A partially selected bucket counts only events within the requested range; its start may precede `from`. Events exactly at `to` are excluded.
+
+Unsupported intervals and reversed time ranges return HTTP 400. An empty result returns HTTP 200 with an empty `buckets` list.
+
+An automated HTTP integration test verifies bucket alignment and the exclusive upper time boundary against PostgreSQL.
+
 ## Storage choice and indexes
 
 PostgreSQL provides durable storage, uniqueness constraints, transactions, time-range filtering, and aggregation with one dependency. It suits this assignment's scope and keeps operational setup straightforward. This deployment is not claimed to match production WSA throughput.
@@ -314,4 +358,4 @@ Manual verification also exercised summary filters, empty/reversed ranges, sampl
 - Test data is isolated from the application database, but integration-test records currently remain between runs with unique IDs. Add targeted cleanup or disposable databases.
 - Replace automatic schema updates with versioned migrations, externalize environment-specific configuration, and add request metrics and operational monitoring.
 - Add automated query tests with controlled datasets, query-plan/performance measurements, retention/time partitioning, and pre-aggregation as justified by scale.
-- Optional bonus endpoints and a full app-plus-database Compose deployment are not implemented.
+- The Time Series bonus is implemented. Alerting, rate limiting, and a full app-plus-database Compose deployment are not implemented.

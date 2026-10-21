@@ -15,54 +15,79 @@ public interface SecurityEventRepository extends JpaRepository<SecurityEventEnti
     long countByClientIpAndTimestampBetween(String clientIp, Instant from, Instant to);
 
     @Query("""
-        SELECT COUNT(e)
-        FROM SecurityEventEntity e
-        WHERE (:configId IS NULL OR e.configId = :configId)
-        AND e.timestamp >= :from
-        AND e.timestamp < :to
-        """)
-    long countForSummary(@Param("configId") Integer configId,@Param("from") Instant from,@Param("to") Instant to);
+            SELECT COUNT(e)
+            FROM SecurityEventEntity e
+            WHERE (:configId IS NULL OR e.configId = :configId)
+            AND e.timestamp >= :from
+            AND e.timestamp < :to
+            """)
+    long countForSummary(@Param("configId") Integer configId, @Param("from") Instant from, @Param("to") Instant to);
 
     @Query("""
-        SELECT e.ruleCategory, COUNT(e), AVG(e.threatScore)
-        FROM SecurityEventEntity e
-        WHERE (:configId IS NULL OR e.configId = :configId)
-        AND e.timestamp >= :from
-        AND e.timestamp < :to
-        GROUP BY e.ruleCategory
-        """)
-    List<Object[]> summarizeCategories(@Param("configId") Integer configId,@Param("from") Instant from,@Param("to") Instant to);
-
-     @Query("""
-        SELECT e.action, COUNT(e)
-        FROM SecurityEventEntity e
-        WHERE (:configId IS NULL OR e.configId = :configId)
-        AND e.timestamp >= :from
-        AND e.timestamp < :to
-        GROUP BY e.action
-        """)
-    List<Object[]> summarizeActions(@Param("configId") Integer configId,@Param("from") Instant from,@Param("to") Instant to);
+            SELECT e.ruleCategory, COUNT(e), AVG(e.threatScore)
+            FROM SecurityEventEntity e
+            WHERE (:configId IS NULL OR e.configId = :configId)
+            AND e.timestamp >= :from
+            AND e.timestamp < :to
+            GROUP BY e.ruleCategory
+            """)
+    List<Object[]> summarizeCategories(@Param("configId") Integer configId, @Param("from") Instant from,
+            @Param("to") Instant to);
 
     @Query("""
-        SELECT e.clientIp, COUNT(e), AVG(e.threatScore)
-        FROM SecurityEventEntity e
-        WHERE (:configId IS NULL OR e.configId = :configId)
-        AND e.timestamp >= :from
-        AND e.timestamp < :to
-        GROUP BY e.clientIp
-        ORDER BY COUNT(e) DESC, e.clientIp ASC
-        """)
-    List<Object[]> findTopAttackers(@Param("configId") Integer configId,@Param("from") Instant from,@Param("to") Instant to, Pageable pageable);
+            SELECT e.action, COUNT(e)
+            FROM SecurityEventEntity e
+            WHERE (:configId IS NULL OR e.configId = :configId)
+            AND e.timestamp >= :from
+            AND e.timestamp < :to
+            GROUP BY e.action
+            """)
+    List<Object[]> summarizeActions(@Param("configId") Integer configId, @Param("from") Instant from,
+            @Param("to") Instant to);
 
     @Query("""
-        SELECT e.path, COUNT(e)
-        FROM SecurityEventEntity e
-        WHERE (:configId IS NULL OR e.configId = :configId)
-        AND e.timestamp >= :from
-        AND e.timestamp < :to
-        GROUP BY e.path
-        ORDER BY COUNT(e) DESC, e.path ASC
-        """)
-    List<Object[]> findTopTargetedPaths(@Param("configId") Integer configId,@Param("from") Instant from,@Param("to") Instant to, Pageable pageable);
+            SELECT e.clientIp, COUNT(e), AVG(e.threatScore)
+            FROM SecurityEventEntity e
+            WHERE (:configId IS NULL OR e.configId = :configId)
+            AND e.timestamp >= :from
+            AND e.timestamp < :to
+            GROUP BY e.clientIp
+            ORDER BY COUNT(e) DESC, e.clientIp ASC
+            """)
+    List<Object[]> findTopAttackers(@Param("configId") Integer configId, @Param("from") Instant from,
+            @Param("to") Instant to, Pageable pageable);
+
+    @Query("""
+            SELECT e.path, COUNT(e)
+            FROM SecurityEventEntity e
+            WHERE (:configId IS NULL OR e.configId = :configId)
+            AND e.timestamp >= :from
+            AND e.timestamp < :to
+            GROUP BY e.path
+            ORDER BY COUNT(e) DESC, e.path ASC
+            """)
+    List<Object[]> findTopTargetedPaths(@Param("configId") Integer configId, @Param("from") Instant from,
+            @Param("to") Instant to, Pageable pageable);
+
+    @Query(value = """
+            SELECT
+                date_bin(
+                    CAST(:bucketSize AS interval),
+                    event_timestamp,
+                    TIMESTAMPTZ '1970-01-01 00:00:00+00'
+                ) AS bucket_start,
+                COUNT(*) AS event_count
+            FROM security_events
+            WHERE (:configId IS NULL OR config_id = :configId)
+              AND event_timestamp >= :from
+              AND event_timestamp < :to
+            GROUP BY bucket_start
+            ORDER BY bucket_start ASC
+            """, nativeQuery = true)
+    List<Object[]> findTimeSeries(
+            @Param("configId") Integer configId,
+            @Param("from") Instant from,
+            @Param("to") Instant to,
+            @Param("bucketSize") String bucketSize);
 
 }

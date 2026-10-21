@@ -84,3 +84,10 @@ Write-Host "`n=== Samples ==="
 Invoke-RestMethod `
     -Uri "$BaseUrl/v1/events/samples?from=$from&to=$to&limit=3&offset=0" |
     ConvertTo-Json -Depth 10
+
+# 4. Display event counts in five-minute buckets.
+Write-Host "`n=== Time Series ==="
+
+Invoke-RestMethod `
+    -Uri "$BaseUrl/v1/stats/timeseries?from=$from&to=$to&interval=5m" |
+    ConvertTo-Json -Depth 10
