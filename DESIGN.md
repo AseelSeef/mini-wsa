@@ -1,7 +1,5 @@
 # Mini WSA - Initial Design
 
-Status: planning document, written before implementation. The components and behavior below are proposed, not completed features. This document will evolve as the implementation is validated.
-
 ## 1. Goal and scope
 
 Build a Java / Spring Boot backend that ingests security events, validates and enriches them, persists them, and exposes summary statistics and individual samples through REST APIs.
@@ -30,7 +28,7 @@ The initial implementation will use one Spring Boot application and PostgreSQL.
 | JUnit / Spring Boot Test | Unit and integration tests |
 | Git / GitHub | Small logical commits and milestone tags |
 
-The database access approach (JPA or JDBC) will be selected during project setup.
+Database access uses Spring Data JPA and Hibernate, with EntityManager for insert-only persistence and filtered sample queries. Summary aggregation uses JPQL, while time-series aggregation uses native PostgreSQL SQL.
 
 ## 3. Architecture
 

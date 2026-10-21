@@ -1,4 +1,4 @@
-# Mini WSA â€” Security Analytics Pipeline
+# Mini WSA - Security Analytics Pipeline
 
 A Java / Spring Boot backend for ingesting security events, classifying attacks, calculating threat scores, storing enriched events, and querying analytics.
 
@@ -171,7 +171,7 @@ A fresh 10,000-event import should create 10,000 records. Repeating the same fil
 
 Accepts a single JSON object or a JSON array directly; there is no `events` wrapper. Required fields are `eventId`, `timestamp`, `configId`, `clientIp`, `path`, `rule`, and `action`. Within `rule`, `severity` and `category` are required. Other original fields are optional.
 
-Nonblank constraints apply to required strings. Optional `statusCode` must be 100â€“599; request/response sizes must be nonnegative. IP strings are required to be nonblank but are not currently validated as IP literals.
+Nonblank constraints apply to required strings. Optional `statusCode` must be 100 - 599; request/response sizes must be nonnegative. IP strings are required to be nonblank but are not currently validated as IP literals.
 
 Example:
 
