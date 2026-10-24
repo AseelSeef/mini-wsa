@@ -3,6 +3,8 @@ package com.aseel.mini_wsa.model;
 import java.time.Instant;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -29,6 +31,9 @@ public class SecurityEvent {
     private String path;
 
     private String method;
+    
+    @Min(100)
+    @Max(599)
     private Integer statusCode;
     private String userAgent;
 

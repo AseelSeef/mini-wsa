@@ -336,9 +336,9 @@ Indexes:
 .\mvnw.cmd test
 ```
 
-Unit tests cover validation, classification/scoring, continuation after an invalid batch item, and simulated concurrent-insert failure handling. The API integration test starts Spring on a random port with the `test` profile, inserts through HTTP into PostgreSQL, and verifies that resubmission returns the same event.
+Automated tests cover all seven classification mappings, threat-scoring boundaries, HTTP status-code validation, mixed-batch handling, and PostgreSQL-backed analytics.
 
-Manual verification also exercised summary filters, empty/reversed ranges, samples pagination and combined filters, a mixed batch, and importing/replaying 10,000 generated events. Manual checks complement the automated suite; they are not automated performance benchmarks. The concurrency unit test simulates a race outcome rather than running simultaneous database requests.
+Query integration tests verify summary counts and averages, top-ten ordering and tie-breaking, sample filters, time boundaries, pagination, and totals before pagination.
 
 ## Challenges and lessons learned
 
@@ -354,6 +354,5 @@ Manual verification also exercised summary filters, empty/reversed ranges, sampl
 - If a database failure interrupts a batch, earlier events may already be stored. Clients can retry the batch; stored event IDs are returned without being inserted again.
 - Offset pagination may shift when new events arrive between requests.
 - The generator and demo load events into memory. For larger datasets, I would generate and send smaller batches incrementally.
-- I would expand automated coverage for Summary and Samples using known datasets and expected results.
 - The project uses automatic schema updates and local development credentials for simplicity. These settings would need to be adapted for deployment.
 - The Time Series bonus is implemented. Other optional bonuses and an application container are outside the submitted scope.

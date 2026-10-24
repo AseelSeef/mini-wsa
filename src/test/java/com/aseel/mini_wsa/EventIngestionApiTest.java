@@ -1,6 +1,7 @@
 package com.aseel.mini_wsa;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -8,6 +9,8 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpRequest;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -196,5 +199,75 @@ class EventIngestionApiTest {
         } finally {
             repository.deleteAllById(List.of(firstId, secondId));
         }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"99, 100",
+                "600, 599" })
+    void shouldRejectInvalidStatusCodeAndStoreValidBatchItem(int invalidCode, int validCode) throws Exception {
+
+            String invalidId = "invalid-status-" + UUID.randomUUID();
+            String validId = "valid-status-" + UUID.randomUUID();
+
+            String eventTemplate = """
+                            {
+                            "eventId": "%s",
+                            "timestamp": "2026-01-01T00:00:00Z",
+                            "configId": 1,
+                            "clientIp": "203.0.113.42",
+                            "path": "/public",
+                            "action": "DENY",
+                            "statusCode": %d,
+                            "rule": {
+                            "severity": "HIGH",
+                            "category": "INJECTION"
+                            }
+                            }
+                            """;
+
+            String json = "["
+                            + eventTemplate.formatted(invalidId, invalidCode)
+                            + ","
+                            + eventTemplate.formatted(validId, validCode)
+                            + "]";
+
+            try (HttpClient client = HttpClient.newHttpClient()) {
+                    HttpRequest request = HttpRequest.newBuilder()
+                                    .uri(URI.create("http://localhost:" + port + "/v1/events/ingest"))
+                                    .header("Content-Type", "application/json")
+                                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                                    .build();
+
+                    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                    assertEquals(200, response.statusCode(), response.body());
+
+                    JsonNode body = objectMapper.readTree(response.body());
+                    assertEquals(1, body.get("created").asInt());
+                    assertEquals(0, body.get("existing").asInt());
+                    assertEquals(1, body.get("rejected").asInt());
+                    assertEquals(2, body.get("results").size());
+
+                    JsonNode rejected = body.get("results").get(0);
+                    assertEquals(0, rejected.get("index").asInt());
+                    assertEquals(invalidId, rejected.get("eventId").asString());
+                    assertEquals(400, rejected.get("status").asInt());
+                    assertEquals(
+                                    "statusCode",
+                                    rejected.get("validationErrors").get(0).get("field").asString());
+
+                    JsonNode created = body.get("results").get(1);
+                    assertEquals(1, created.get("index").asInt());
+                    assertEquals(201, created.get("status").asInt());
+                    assertEquals(validId, created.get("event").get("eventId").asString());
+                    assertEquals(validCode, created.get("event").get("statusCode").asInt());
+
+                    // Verify actual persistence, not only the HTTP response.
+                    assertFalse(repository.existsById(invalidId));
+                    var stored = repository.findById(validId).orElseThrow();
+                    assertEquals(Integer.valueOf(validCode), stored.getStatusCode());
+            } finally {
+                    repository.deleteAllById(List.of(invalidId, validId));
+            }
     }
 }
