@@ -2,7 +2,7 @@
 
 A Java / Spring Boot backend for ingesting security events, classifying attacks, calculating threat scores, storing enriched events, and querying analytics.
 
-Implemented for the Akamai backend assignment. See [Design & Architecture](DESIGN.md) for the initial planning and design assumptions. The implementation notes below describe the delivered behavior where it differs from the initial plan.
+Built as a backend design exercise. See [Design & Architecture](DESIGN.md) for the initial planning and design assumptions. The implementation notes below describe the delivered behavior where it differs from the initial plan.
 
 ## Technology
 
@@ -206,7 +206,7 @@ The response contains `created`, `existing`, `rejected`, and `results`. Each res
 | 200 | Mixed outcomes, or all items already existed |
 | 400 | All items rejected, or invalid request structure / malformed JSON |
 
-Item statuses are JSON fields; the request has one actual HTTP status. Partial acceptance is a documented interpretation of the assignment's unspecified mixed-batch behavior. Items are processed in request order. A valid item survives another item's rejection. Malformed JSON rejects the whole request.
+Item statuses are JSON fields; the request has one actual HTTP status. Partial acceptance of mixed batches is a deliberate design choice. Items are processed in request order. A valid item survives another item's rejection. Malformed JSON rejects the whole request.
 
 #### Classification
 
@@ -262,7 +262,7 @@ No matches return 200 with zero total and empty maps/lists. Reversed ranges retu
 All parameters are optional: `configId`, `from`, `to`, `category`, `action`, `limit`, and `offset`.
 
 - `from` inclusive and `to` exclusive, filtering on event timestamp.
-- `limit`: default 20; allowed 1â€“100.
+- `limit`: default 20; allowed 1–100.
 - `offset`: default 0; must be nonnegative.
 - Order: timestamp descending, then eventId ascending.
 - `total` counts all matching records before pagination.
@@ -274,7 +274,7 @@ Invoke-RestMethod "http://localhost:8080/v1/events/samples?category=BOT&action=D
 
 Returns `events`, `total`, `limit`, and `offset`. An offset beyond the total returns an empty list with the actual total. Invalid filters/pagination return 400.
 
-### Time Series — Bonus Feature
+### Time Series
 
 `GET /v1/stats/timeseries`
 
@@ -319,7 +319,7 @@ An automated HTTP integration test verifies bucket alignment and the exclusive u
 
 ## Storage choice and indexes
 
-PostgreSQL provides durable storage, uniqueness constraints, transactions, time-range filtering, and aggregation with one dependency. It suits this assignment's scope and keeps operational setup straightforward. This deployment is not claimed to match production WSA throughput.
+PostgreSQL provides durable storage, uniqueness constraints, transactions, time-range filtering, and aggregation with one dependency. It suits this project's scope and keeps operational setup straightforward. This deployment is not designed for production-scale throughput.
 
 One row stores one enriched event. Nested rule/location objects are flattened into columns and reconstructed for API responses. Enums are stored by name.
 
@@ -355,4 +355,4 @@ Query integration tests verify summary counts and averages, top-ten ordering and
 - Offset pagination may shift when new events arrive between requests.
 - The generator and demo load events into memory. For larger datasets, I would generate and send smaller batches incrementally.
 - The project uses automatic schema updates and local development credentials for simplicity. These settings would need to be adapted for deployment.
-- The Time Series bonus is implemented. Other optional bonuses and an application container are outside the submitted scope.
+- The application itself is not yet containerized; adding an application image to Compose is a planned next step.
