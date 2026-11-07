@@ -4,6 +4,7 @@ import java.time.Instant;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import com.aseel.mini_wsa.dto.DataTimeRange;
 import com.aseel.mini_wsa.entity.SecurityEventEntity;
 import java.util.List;
 import org.springframework.data.domain.Pageable;
@@ -68,6 +69,13 @@ public interface SecurityEventRepository extends JpaRepository<SecurityEventEnti
             """)
     List<Object[]> findTopTargetedPaths(@Param("configId") Integer configId, @Param("from") Instant from,
             @Param("to") Instant to, Pageable pageable);
+
+    @Query("""
+            SELECT new com.aseel.mini_wsa.dto.DataTimeRange(MIN(e.timestamp), MAX(e.timestamp), COUNT(e))
+            FROM SecurityEventEntity e
+            WHERE (:configId IS NULL OR e.configId = :configId)
+            """)
+    DataTimeRange findDataTimeRange(@Param("configId") Integer configId);
 
     @Query(value = """
             SELECT
