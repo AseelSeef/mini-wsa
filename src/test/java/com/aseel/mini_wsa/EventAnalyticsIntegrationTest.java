@@ -1,6 +1,7 @@
 package com.aseel.mini_wsa;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,6 +19,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.aseel.mini_wsa.dto.AttackerStats;
+import com.aseel.mini_wsa.dto.DataTimeRange;
 import com.aseel.mini_wsa.dto.EnrichedSecurityEvent;
 import com.aseel.mini_wsa.dto.SamplesResponse;
 import com.aseel.mini_wsa.dto.SummaryResponse;
@@ -207,6 +209,33 @@ class EventAnalyticsIntegrationTest {
         assertTrue(response.getByAction().isEmpty());
         assertTrue(response.getTopAttackers().isEmpty());
         assertTrue(response.getTopTargetedPaths().isEmpty());
+    }
+
+    @Test
+    void shouldReturnDataTimeRangeForConfiguration() {
+        DataTimeRange empty = statistics.dataTimeRange(configId);
+        assertNull(empty.earliest());
+        assertNull(empty.latest());
+        assertEquals(0L, empty.totalEvents());
+
+        // Saved out of time order, so the result cannot depend on insertion order.
+        save("middle", configId, FROM.plusSeconds(30), AttackCategory.BOT, Action.DENY,
+            "192.0.2.10", "/login", 20);
+        save("latest", configId, TO, AttackCategory.BOT, Action.DENY,
+            "192.0.2.10", "/login", 20);
+        save("earliest", configId, FROM.minusSeconds(5), AttackCategory.BOT, Action.DENY,
+            "192.0.2.10", "/login", 20);
+        // Decoys outside the earliest/latest range, but in another configuration.
+        save("other-early", otherConfigId, FROM.minusSeconds(3600), AttackCategory.XSS, Action.DENY,
+            "192.0.2.99", "/excluded", 100);
+        save("other-late", otherConfigId, TO.plusSeconds(3600), AttackCategory.XSS, Action.DENY,
+            "192.0.2.99", "/excluded", 100);
+        repository.flush();
+
+        DataTimeRange range = statistics.dataTimeRange(configId);
+        assertEquals(FROM.minusSeconds(5), range.earliest());
+        assertEquals(TO, range.latest());
+        assertEquals(3L, range.totalEvents());
     }
 
     @Test
