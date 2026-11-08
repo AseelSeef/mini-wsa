@@ -4,7 +4,8 @@
 param(
     [string]$BaseUrl = "http://localhost:8080",
     [string]$InputFile = "$PSScriptRoot/events.json",
-    [int]$BatchSize = 100
+    [int]$BatchSize = 100,
+    [switch]$SkipAnalyst
 )
 
 $ErrorActionPreference = "Stop"
@@ -91,3 +92,39 @@ Write-Host "`n=== Time Series ==="
 Invoke-RestMethod `
     -Uri "$BaseUrl/v1/stats/timeseries?from=$from&to=$to&interval=5m" |
     ConvertTo-Json -Depth 10
+
+# 5. Ask the AI analyst a question about the same data (requires ANTHROPIC_API_KEY on the server).
+if ($SkipAnalyst) {
+    Write-Host "`n=== AI Analyst === (skipped)"
+}
+else {
+    Write-Host "`n=== AI Analyst ==="
+
+    $isoFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+    $question = "Between $($times[0].UtcDateTime.ToString($isoFormat)) and " +
+        "$($times[-1].AddSeconds(1).UtcDateTime.ToString($isoFormat)), " +
+        "what was the most common attack category, and who was the top attacker?"
+    Write-Host "Q: $question`n"
+
+    $askBody = @{ question = $question } | ConvertTo-Json -Compress
+
+    try {
+        # Windows PowerShell 5.1 decodes responses without a charset as ISO-8859-1,
+        # which garbles non-ASCII text (e.g. dashes, Hebrew). Decode the bytes as UTF-8 explicitly.
+        $response = Invoke-WebRequest `
+            -Uri "$BaseUrl/v1/analyst/ask" `
+            -Method Post `
+            -UseBasicParsing `
+            -ContentType "application/json; charset=utf-8" `
+            -Body ([System.Text.Encoding]::UTF8.GetBytes($askBody))
+        $json = [System.Text.Encoding]::UTF8.GetString($response.RawContentStream.ToArray())
+        Write-Host ($json | ConvertFrom-Json).answer
+    }
+    catch {
+        # The analyst is optional: report the failure without failing the demo.
+        Write-Host "AI analyst unavailable (is ANTHROPIC_API_KEY set for the server?)"
+        if ($_.ErrorDetails.Message) {
+            Write-Host $_.ErrorDetails.Message
+        }
+    }
+}

@@ -297,3 +297,50 @@ Potential later improvements:
 - One optional bonus feature, after core requirements work.
 
 Record actual implementation challenges, solutions, and something learned after encountering them; do not present planned work as completed experience.
+
+## 13. Addendum: AI analyst
+
+This section was added after the original assignment, so it is not part of the initial plan above. The implemented behavior is documented in the README ([AI analyst](README.md#ai-analyst)).
+
+### Goal
+
+Let a user ask questions about stored events in natural language ("What was the most common attack category, and who was the top attacker?") without exposing the database to the model or letting the model produce numbers on its own.
+
+### Approach
+
+An agent built on Spring AI's `ChatClient` with tool calling, using Anthropic Claude as the model. `POST /v1/analyst/ask` sends the question and a system prompt. The model may only call read-only tools that wrap the existing analytics services:
+
+```mermaid
+flowchart LR
+    Client["Client"] --> Ask["POST /v1/analyst/ask"]
+    Ask --> Agent["AnalystService (ChatClient)"]
+    Agent <-->|"prompt and tool results"| LLM["Claude"]
+    Agent -->|"tool calls"| Tools["SecurityAnalyticsTools"]
+    Tools --> Stats["EventStatisticsService"]
+    Stats --> DB[("PostgreSQL")]
+```
+
+```text
+ASK(question):
+    send system prompt (rules + current UTC time) and question to the model
+    LOOP while the model requests tools:
+        validate and parse tool arguments
+        IF invalid: return an error message describing the expected format
+        ELSE: run the existing analytics query and return its result
+    RETURN the model's final answer
+```
+
+### Decisions
+
+- **Reuse, don't duplicate.** Tools delegate to the same services as the REST endpoints, so the agent and the API cannot disagree.
+- **Numbers come only from tools.** Aggregation stays in PostgreSQL. The system prompt forbids invented values and requires saying when data is insufficient.
+- **Orientation tool.** The model cannot know when data exists, so `getDataTimeRange` comes before range queries. Without it, a question about "the last hour" over historical data would wrongly report no activity.
+- **Self-correcting errors.** Tool arguments are strings parsed by the tool. Errors explain the expected format and are returned to the model instead of failing the request.
+- **Untrusted input.** Event fields such as `path` and user agent are attacker-controlled and can carry prompt-injection text. Tools are read-only, and tool results are declared to be data only.
+- **Failure isolation.** Provider failures return 502 with a generic message; the rest of the API does not depend on the AI provider.
+
+### Next steps
+
+- Samples and time-series tools, so the agent can inspect individual events and detect spikes.
+- Retrieval (RAG) over mitigation playbooks stored in pgvector, exposed as another tool.
+- Automated evaluation: fixed questions with expected facts, checked against the analytics endpoints.

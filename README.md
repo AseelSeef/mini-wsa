@@ -1,6 +1,6 @@
 # Mini WSA - Security Analytics Pipeline
 
-A Java / Spring Boot backend for ingesting security events, classifying attacks, calculating threat scores, storing enriched events, and querying analytics.
+A Java / Spring Boot backend for ingesting security events, classifying attacks, calculating threat scores, storing enriched events, and querying analytics. An AI analyst endpoint answers natural-language questions about the stored events. It uses Claude and tool calling over the same analytics APIs.
 
 Built as a backend design exercise. See [Design & Architecture](DESIGN.md) for the initial planning and design assumptions. The implementation notes below describe the delivered behavior where it differs from the initial plan.
 
@@ -12,6 +12,7 @@ Built as a backend design exercise. See [Design & Architecture](DESIGN.md) for t
 - PostgreSQL 17, running through Docker Compose
 - Jackson 3
 - JUnit and Mockito
+- Spring AI 2.0 with Anthropic Claude, for the AI analyst
 
 ## Architecture
 
@@ -26,6 +27,8 @@ flowchart TD
         Ingest["POST /v1/events/ingest"]
         Summary["GET /v1/stats/summary"]
         Samples["GET /v1/events/samples"]
+        Ask["POST /v1/analyst/ask"]
+        Agent["AnalystService: ChatClient + read-only tools"]
         Pipeline["Validation, Deduplication and Enrichment"]
         Analytics["Aggregation and Filtered Queries"]
         Storage["JPA Repositories / EntityManager"]
@@ -33,6 +36,8 @@ flowchart TD
         Pipeline --> Storage
         Summary --> Analytics
         Samples --> Analytics
+        Ask --> Agent
+        Agent -->|"tool calls"| Analytics
         Analytics --> Storage
     end
     Generator --> File
@@ -40,6 +45,8 @@ flowchart TD
     Client --> Ingest
     Client --> Summary
     Client --> Samples
+    Client --> Ask
+    Agent <-->|"prompt and tool results"| LLM["Anthropic Claude API"]
     Storage --> DB[("PostgreSQL")]
 ```
 
@@ -51,6 +58,7 @@ Controllers handle HTTP. Services coordinate processing. Classification and scor
 - Docker Desktop running with Linux containers
 - Git
 - Windows PowerShell for the commands and demo script below
+- An Anthropic API key, only for the AI analyst endpoint (see [AI analyst](#ai-analyst))
 
 Maven and PostgreSQL do not need separate installations. The wrapper downloads Maven, and Compose starts PostgreSQL.
 
@@ -317,6 +325,63 @@ Unsupported intervals and reversed time ranges return HTTP 400. An empty result 
 
 An automated HTTP integration test verifies bucket alignment and the exclusive upper time boundary against PostgreSQL.
 
+## AI analyst
+
+`POST /v1/analyst/ask`
+
+Answers natural-language questions about stored events, for example "What was the most common attack category, and who was the top attacker?" The endpoint sends the question to Claude through Spring AI's `ChatClient`. The model does not see the database. It can only call these read-only tools:
+
+| Tool | Backed by | Purpose |
+| --- | --- | --- |
+| `getDataTimeRange(configId?)` | earliest/latest event timestamps and count | Lets the model find which period contains data before querying it |
+| `getSummary(configId?, from, to)` | `EventStatisticsService.summary` (same as `GET /v1/stats/summary`) | Totals, per-category and per-action stats, top attackers and paths |
+
+The model chooses which tools to call and in what order, then writes the answer from the tool results.
+
+### Setup
+
+The endpoint needs an Anthropic API key in the `ANTHROPIC_API_KEY` environment variable. The rest of the application does not use it. The model is set in `application.properties` (`spring.ai.anthropic.chat.model`).
+
+```powershell
+setx ANTHROPIC_API_KEY "sk-ant-..."
+```
+
+`setx` applies to new processes only, so open a new terminal (or restart the IDE) before starting the application.
+
+### Example
+
+```powershell
+$body = @{ question = "What was the most common attack category, and who was the top attacker?" } | ConvertTo-Json
+(Invoke-RestMethod -Uri "http://localhost:8080/v1/analyst/ask" -Method Post -ContentType "application/json" -Body $body).answer
+```
+
+A real answer over the demo data set:
+
+> You didn't give a time window, so I used all the data available: 2026-10-19 16:00 to 2026-10-20 12:46:39 UTC. That covers 10,003 events.
+>
+> - **Most common attack category:** BOT, with 3,053 events (about 30% of the total). Its average threat score is 61.4. The other categories each have 1,098 to 1,209 events and average scores of about 40 to 41.
+> - **Top attacker:** 203.0.113.5, with 49 events and an average threat score of 41.8.
+>
+> The top attacker is only slightly ahead of the next ones. 203.0.113.43 has 48 events and 203.0.113.63 has 47. No single IP stands out.
+
+Every number in this answer matches `GET /v1/stats/summary` for the same range. The model first called `getDataTimeRange`, because the question had no time window, and then `getSummary`.
+
+Request body: `{"question": "..."}`. The question must be nonblank and at most 2,000 characters. Response body: `{"answer": "..."}`.
+
+| HTTP status | Meaning |
+| --- | --- |
+| 200 | Answer returned |
+| 400 | Blank or overlong question, or malformed JSON |
+| 502 | The AI provider call failed (invalid key, unknown model, rate limit, outage). The client gets a generic message; the full error is logged |
+
+### Design decisions
+
+- **Numbers come from the database, not the model.** Every count, average, IP and path is computed by PostgreSQL through the existing analytics services. The system prompt forbids inventing values and tells the model to say when the data is insufficient.
+- **Orientation before querying.** The model has no knowledge of when data exists. `getDataTimeRange` lets it find the populated period, and the system prompt includes the current UTC time. A question such as "What happened in the last hour?" over old demo data returns an explanation that there are no recent events and when the stored events are, instead of reporting a quiet hour.
+- **Errors are returned to the model.** Tools parse timestamps themselves. Invalid or missing values raise an exception whose message states what was wrong and the expected format (ISO-8601 UTC). Spring AI returns the message to the model as the tool result, so the model can correct the call.
+- **Attacker-controlled data is untrusted.** Fields such as `path`, rule messages and user agents come from the traffic being analyzed and can contain text written to look like instructions (prompt injection). Tools are read-only, and the system prompt instructs the model to treat tool results strictly as data.
+- **Provider failures map to 502.** Anthropic SDK errors (`AnthropicException`) are handled in `ApiExceptionHandler`. The response does not expose the model name, request ID or provider message.
+
 ## Storage choice and indexes
 
 PostgreSQL provides durable storage, uniqueness constraints, transactions, time-range filtering, and aggregation with one dependency. It suits this project's scope and keeps operational setup straightforward. This deployment is not designed for production-scale throughput.
@@ -340,6 +405,8 @@ Automated tests cover all seven classification mappings, threat-scoring boundari
 
 Query integration tests verify summary counts and averages, top-ten ordering and tie-breaking, sample filters, time boundaries, pagination, and totals before pagination.
 
+AI analyst tool tests (`SecurityAnalyticsToolsTest`) verify timestamp parsing, the error messages returned to the model for missing or non-ISO values, that invalid input never reaches the statistics service, and delegation of `configId`. Tests do not call the real model. The `test` profile sets a placeholder API key.
+
 ## Challenges and lessons learned
 
 - Supporting partial batch success required converting and validating each event separately. This allows valid events to be stored even when another event contains an invalid enum or a missing required field.
@@ -356,3 +423,7 @@ Query integration tests verify summary counts and averages, top-ten ordering and
 - The generator and demo load events into memory. For larger datasets, I would generate and send smaller batches incrementally.
 - The project uses automatic schema updates and local development credentials for simplicity. These settings would need to be adapted for deployment.
 - The application itself is not yet containerized; adding an application image to Compose is a planned next step.
+- The AI analyst currently exposes summary and data-range tools only. Samples and time-series tools would let it inspect individual events and detect spikes.
+- AI analyst answers are verified manually against the analytics endpoints. There is no automated end-to-end evaluation against the real model yet.
+- The AI analyst has no retrieval (RAG) over mitigation guidance yet. A planned next step is a pgvector-backed playbook store exposed as an additional tool. The Compose image already includes pgvector.
+- Each question is answered independently; there is no conversation memory.

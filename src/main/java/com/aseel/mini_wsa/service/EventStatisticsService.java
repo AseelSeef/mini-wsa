@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import com.aseel.mini_wsa.dto.AttackerStats;
 import com.aseel.mini_wsa.dto.CategoryStats;
+import com.aseel.mini_wsa.dto.DataTimeRange;
 import com.aseel.mini_wsa.dto.SummaryResponse;
 import com.aseel.mini_wsa.dto.TargetedPathStats;
 import com.aseel.mini_wsa.dto.TimeBucket;
@@ -107,6 +108,10 @@ public class EventStatisticsService {
                 .toList();
 
         return new TimeSeriesResponse(configId,new TimeRange(from, to),interval,buckets);
+    }
+
+    public DataTimeRange dataTimeRange(Integer configId) {
+        return securityEventRepository.findDataTimeRange(configId);
     }
 
     private Instant toInstant(Object value) {
