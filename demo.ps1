@@ -4,7 +4,8 @@
 param(
     [string]$BaseUrl = "http://localhost:8080",
     [string]$InputFile = "$PSScriptRoot/events.json",
-    [int]$BatchSize = 100
+    [int]$BatchSize = 100,
+    [switch]$SkipAnalyst
 )
 
 $ErrorActionPreference = "Stop"
@@ -91,3 +92,34 @@ Write-Host "`n=== Time Series ==="
 Invoke-RestMethod `
     -Uri "$BaseUrl/v1/stats/timeseries?from=$from&to=$to&interval=5m" |
     ConvertTo-Json -Depth 10
+
+# 5. Ask the AI analyst a question about the same data (requires ANTHROPIC_API_KEY on the server).
+if ($SkipAnalyst) {
+    Write-Host "`n=== AI Analyst === (skipped)"
+}
+else {
+    Write-Host "`n=== AI Analyst ==="
+
+    $question = "Between $($times[0].ToUniversalTime().ToString("o")) and " +
+        "$($times[-1].AddSeconds(1).ToUniversalTime().ToString("o")), " +
+        "what was the most common attack category, and who was the top attacker?"
+    Write-Host "Q: $question`n"
+
+    $askBody = @{ question = $question } | ConvertTo-Json -Compress
+
+    try {
+        $answer = Invoke-RestMethod `
+            -Uri "$BaseUrl/v1/analyst/ask" `
+            -Method Post `
+            -ContentType "application/json; charset=utf-8" `
+            -Body ([System.Text.Encoding]::UTF8.GetBytes($askBody))
+        Write-Host $answer.answer
+    }
+    catch {
+        # The analyst is optional: report the failure without failing the demo.
+        Write-Host "AI analyst unavailable (is ANTHROPIC_API_KEY set for the server?)"
+        if ($_.ErrorDetails.Message) {
+            Write-Host $_.ErrorDetails.Message
+        }
+    }
+}
