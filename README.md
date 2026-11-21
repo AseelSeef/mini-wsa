@@ -1,3 +1,5 @@
+![CI](https://github.com/AseelSeef/mini-wsa/actions/workflows/ci.yml/badge.svg)
+
 # Mini WSA - Security Analytics Pipeline
 
 A Java / Spring Boot backend for ingesting security events, classifying attacks, calculating threat scores, storing enriched events, and querying analytics. An AI analyst endpoint answers natural-language questions about the stored events. It uses Claude and tool calling over the same analytics APIs.
