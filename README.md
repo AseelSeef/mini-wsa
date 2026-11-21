@@ -76,6 +76,8 @@ The API is available at `http://localhost:8080`. Stop with `Ctrl+C`, then `docke
 
 For local development, start only the database with `docker compose up -d postgres` and run the app with Maven as described below.
 
+To use the AI analyst, set `ANTHROPIC_API_KEY` in your environment before running Compose; it is passed to the application container.
+
 ## Build and run
 
 Run the commands from the repository root.
@@ -420,6 +422,7 @@ Automated tests cover all seven classification mappings, threat-scoring boundari
 Query integration tests verify summary counts and averages, top-ten ordering and tie-breaking, sample filters, time boundaries, pagination, and totals before pagination.
 
 AI analyst tool tests (`SecurityAnalyticsToolsTest`) verify timestamp parsing, the error messages returned to the model for missing or non-ISO values, that invalid input never reaches the statistics service, and delegation of `configId`. Tests do not call the real model. The `test` profile sets a placeholder API key.
+
 The same tests run in GitHub Actions on every push and pull request, against a PostgreSQL service container.
 
 ## Challenges and lessons learned
