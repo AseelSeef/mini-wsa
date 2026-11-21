@@ -24,6 +24,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mini_wsa
       SPRING_DATASOURCE_USERNAME: mini_wsa
       SPRING_DATASOURCE_PASSWORD: local_dev_password
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-not-set}
     ports:
       - "127.0.0.1:8080:8080"
 
