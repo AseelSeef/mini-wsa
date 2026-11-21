@@ -15,10 +15,12 @@ Built as a backend design exercise. See [Design & Architecture](DESIGN.md) for t
 - Jackson 3
 - JUnit and Mockito
 - Spring AI 2.0 with Anthropic Claude, for the AI analyst
+- Docker (multi-stage build) and Docker Compose
+- GitHub Actions CI: build and integration tests against PostgreSQL on every push and pull request
 
 ## Architecture
 
-One Spring Boot application exposes three endpoints. PostgreSQL runs as a separate container.
+One Spring Boot application exposes the REST API. The application and PostgreSQL run as separate containers through Docker Compose.
 
 ```mermaid
 flowchart TD
@@ -64,6 +66,16 @@ Controllers handle HTTP. Services coordinate processing. Classification and scor
 
 Maven and PostgreSQL do not need separate installations. The wrapper downloads Maven, and Compose starts PostgreSQL.
 
+## Quick start (Docker)
+
+Run the whole system (PostgreSQL + application) with one command:
+
+    docker compose up --build
+
+The API is available at `http://localhost:8080`. Stop with `Ctrl+C`, then `docker compose down`.
+
+For local development, start only the database with `docker compose up -d postgres` and run the app with Maven as described below.
+
 ## Build and run
 
 Run the commands from the repository root.
@@ -71,7 +83,7 @@ Run the commands from the repository root.
 ### 1. Start PostgreSQL
 
 ```powershell
-docker compose up -d
+docker compose up -d postgres
 docker compose ps
 ```
 
@@ -408,6 +420,7 @@ Automated tests cover all seven classification mappings, threat-scoring boundari
 Query integration tests verify summary counts and averages, top-ten ordering and tie-breaking, sample filters, time boundaries, pagination, and totals before pagination.
 
 AI analyst tool tests (`SecurityAnalyticsToolsTest`) verify timestamp parsing, the error messages returned to the model for missing or non-ISO values, that invalid input never reaches the statistics service, and delegation of `configId`. Tests do not call the real model. The `test` profile sets a placeholder API key.
+The same tests run in GitHub Actions on every push and pull request, against a PostgreSQL service container.
 
 ## Challenges and lessons learned
 
@@ -424,7 +437,6 @@ AI analyst tool tests (`SecurityAnalyticsToolsTest`) verify timestamp parsing, t
 - Offset pagination may shift when new events arrive between requests.
 - The generator and demo load events into memory. For larger datasets, I would generate and send smaller batches incrementally.
 - The project uses automatic schema updates and local development credentials for simplicity. These settings would need to be adapted for deployment.
-- The application itself is not yet containerized; adding an application image to Compose is a planned next step.
 - The AI analyst currently exposes summary and data-range tools only. Samples and time-series tools would let it inspect individual events and detect spikes.
 - AI analyst answers are verified manually against the analytics endpoints. There is no automated end-to-end evaluation against the real model yet.
 - The AI analyst has no retrieval (RAG) over mitigation guidance yet. A planned next step is a pgvector-backed playbook store exposed as an additional tool. The Compose image already includes pgvector.
